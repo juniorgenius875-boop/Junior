@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic[email]
+pandas
+numpy
+python-dotenv
+scikit-learn==1.7.0
+pymongo>=4.15
+PyJWT>=2.10
+bcrypt>=4.2
+google-genai>=1.0
