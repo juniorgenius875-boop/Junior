@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import close_db, connect_db
-from app.routes import ai_routes, auth_routes, prediction_routes, profile_routes, progress_routes, test_routes
+from app.routes import activity_routes, admin_routes, ai_routes, auth_routes, prediction_routes, profile_routes, progress_routes, report_routes, test_routes
 from app.services.ml_service import ml_service
 from app.services.rag_service import rag_service
 
@@ -31,11 +31,15 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
+    expose_headers=['Content-Disposition'],
 )
 
 app.include_router(auth_routes.router)
+app.include_router(activity_routes.router)
+app.include_router(admin_routes.router)
 app.include_router(profile_routes.router)
 app.include_router(progress_routes.router)
+app.include_router(report_routes.router)
 app.include_router(prediction_routes.router)
 app.include_router(test_routes.router)
 app.include_router(ai_routes.router)

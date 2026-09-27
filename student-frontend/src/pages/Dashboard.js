@@ -1,192 +1,111 @@
-import React, { useEffect, useState } from 'react';
-import { progressApi } from '../api/client';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Line } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
-import { Trophy, TrendingUp, Zap } from 'lucide-react';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from 'chart.js';
+import { profileApi, progressApi, testsApi } from '../api/client';
+import { PageLoader } from '../components/Loading';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+
+const fmt = value => value == null || value === '' ? '—' : value;
+const date = value => value ? new Date(value).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 function Dashboard() {
-  const [history, setHistory] = useState([]);
+  const [data, setData] = useState({ profile: {}, stats: {}, progress: [], tests: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchHistory();
+    let active = true;
+    Promise.all([profileApi.get(), profileApi.stats(), progressApi.list(120), testsApi.listResults(30)])
+      .then(([profile, stats, progress, tests]) => {
+        if (active) setData({ profile: profile || {}, stats: stats || {}, progress: progress || [], tests: tests || [] });
+      })
+      .catch(() => { if (active) setData({ profile: {}, stats: {}, progress: [], tests: [] }); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
-  const fetchHistory = async () => {
-    setLoading(true);
-    try {
-      const data = await progressApi.list(200);
-      setHistory([...(data || [])].reverse());
-    } catch (error) {
-      console.error('Error loading progress history:', error);
-      setHistory([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const data = {
-    labels: history.map(item => new Date(item.created_at).toLocaleDateString(undefined, {month:'short', day:'numeric'})),
+  const latest = data.progress[0] || null;
+  const history = useMemo(() => [...data.progress].reverse(), [data.progress]);
+  const scoreSeries = useMemo(() => ({
+    labels: history.map(row => new Date(row.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })),
     datasets: [{
-      label: 'My XP Points 🚀',
-      data: history.map(item => item.total_predicted_marks),
-      borderColor: '#F59E0B', // Amber-500
-      backgroundColor: 'rgba(245, 158, 11, 0.2)',
-      tension: 0.4,
-      pointRadius: 6,
-      pointHoverRadius: 8,
-      pointBackgroundColor: '#FFF',
-      pointBorderColor: '#F59E0B',
-      pointBorderWidth: 2,
-      fill: true
-    }]
-  };
+      label: 'Predicted marks',
+      data: history.map(row => row.total_predicted_marks),
+      borderColor: '#4f46e5',
+      backgroundColor: 'rgba(79,70,229,.08)',
+      tension: .3,
+      borderWidth: 2,
+      pointRadius: 2.5,
+      pointHoverRadius: 4,
+      fill: true,
+    }],
+  }), [history]);
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { 
-        legend: { 
-            labels: { 
-                font: { family: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif", size: 14 } 
-            } 
-        },
-        tooltip: {
-            backgroundColor: '#FFF',
-            titleColor: '#333',
-            bodyColor: '#666',
-            borderColor: '#E5E7EB',
-            borderWidth: 1,
-            titleFont: { family: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif" },
-            bodyFont: { family: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif" }
-        }
-    },
-    scales: {
-        x: { 
-            grid: { display: false },
-            ticks: { font: { family: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif" } }
-        },
-        y: { 
-            grid: { borderDash: [5, 5], color: '#E5E7EB' }, 
-            beginAtZero: true, 
-            max: 100,
-            ticks: { font: { family: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif" } }
-        }
-    }
-  };
+  if (loading) return <PageLoader rows={2} />;
 
-  if (loading) return (
-    <div className="page-container" style={{
-        textAlign:'center', paddingTop:'50px',
-        fontFamily: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif"
-    }}>
-        <h2>Loading Mission Control... 🛸</h2>
-    </div>
-  );
+  const risk = (latest?.risk_level || 'No data').toLowerCase();
+  const tests = data.tests.slice(0, 6);
 
   return (
-    <div className="page-container" style={{
-        fontFamily: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', sans-serif",
-        backgroundColor: '#FFFBEB', // Consistent warm background
-        minHeight: '100vh',
-        padding: '20px'
-    }}>
-      <header style={{marginBottom: '30px', textAlign: 'center'}}>
-        <h1 style={{
-            fontSize: '2.5rem', 
-            marginBottom: '5px', 
-            color: '#D97706', // Dark Amber
-            fontWeight: '800',
-            textShadow: '1px 1px 0 #FFF'
-        }}>
-            🚀 Mission Control
-        </h1>
-        <p style={{
-            color: '#92400E', 
-            fontSize: '1.1rem',
-            fontWeight: '600'
-        }}>
-            Ready to learn something new today?
-        </p>
-      </header>
-      
-      {/* 3 Color-Coded Cards */}
-      <div className="stats-grid" style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-          marginBottom: '30px'
-      }}>
-        <div className="stat-card" style={{
-            background: '#FFF',
-            border: '2px solid #FCD34D', // Amber-300
-            borderRadius: '20px',
-            padding: '20px',
-            textAlign: 'center',
-            boxShadow: '0 4px 0 #F59E0B'
-        }}>
-            <Trophy size={40} color="#F59E0B" style={{marginBottom:'10px', display: 'inline-block'}}/>
-            <h3 style={{color: '#78350F', fontSize: '1.2rem', marginBottom: '5px'}}>Total Missions</h3>
-            <p style={{fontSize: '2rem', fontWeight: 'bold', color: '#D97706', margin: 0}}>{history.length}</p>
-        </div>
-        <div className="stat-card" style={{
-            background: '#FFF',
-            border: '2px solid #86EFAC', // Green-300
-            borderRadius: '20px',
-            padding: '20px',
-            textAlign: 'center',
-            boxShadow: '0 4px 0 #22C55E'
-        }}>
-            <TrendingUp size={40} color="#22C55E" style={{marginBottom:'10px', display: 'inline-block'}}/>
-            <h3 style={{color: '#14532D', fontSize: '1.2rem', marginBottom: '5px'}}>High Score</h3>
-            <p style={{fontSize: '2rem', fontWeight: 'bold', color: '#16A34A', margin: 0}}>
-                {history.length > 0 ? Math.max(...history.map(h => h.total_predicted_marks || 0)) : 0}
-            </p>
-        </div>
-        <div className="stat-card" style={{
-            background: '#FFF',
-            border: '2px solid #F9A8D4', // Pink-300
-            borderRadius: '20px',
-            padding: '20px',
-            textAlign: 'center',
-            boxShadow: '0 4px 0 #EC4899'
-        }}>
-            <Zap size={40} color="#EC4899" style={{marginBottom:'10px', display: 'inline-block'}}/>
-            <h3 style={{color: '#831843', fontSize: '1.2rem', marginBottom: '5px'}}>Power Level</h3>
-            <p style={{fontSize: '2rem', fontWeight: 'bold', color: '#DB2777', margin: 0}}>
-                {history.length > 0 ? "Level " + Math.floor(history.length / 2 + 1) : "Level 1"}
-            </p>
+    <div className="page-shell">
+      <div className="page-heading">
+        <div>
+          <h1>Overview</h1>
+          <p>{data.profile?.name || 'Student'}{data.profile?.grade ? ` · Grade ${data.profile.grade}` : ''}{data.profile?.school ? ` · ${data.profile.school}` : ''}</p>
         </div>
       </div>
 
-      <div className="card chart-container" style={{
-          height: '450px',
-          background: '#FFF',
-          border: '3px solid #E5E7EB',
-          borderRadius: '25px',
-          padding: '20px',
-          boxShadow: '0 8px 0 #D1D5DB'
-      }}>
-        <h2 style={{
-            marginBottom: '20px', 
-            color: '#4B5563', 
-            textAlign: 'center',
-            fontSize: '1.5rem',
-            fontWeight: '700'
-        }}>
-            📈 XP Growth Chart
-        </h2>
-        <div style={{height: '350px'}}>
-            {history.length > 0 ? <Line data={data} options={chartOptions}/> : 
-            <div style={{textAlign:'center', padding:'50px', color:'#9CA3AF'}}>
-                <p style={{fontSize: '1.2rem'}}>No missions completed yet!</p>
-                <p>Go to <strong>Check Stats</strong> to start your first mission.</p>
-            </div>}
+      <section className="metric-grid">
+        <Metric label="Predicted marks" value={fmt(latest?.total_predicted_marks)} meta={latest ? date(latest.created_at) : 'No prediction yet'} />
+        <Metric label="Assessment average" value={`${data.stats?.averageScore || 0}%`} meta={`${data.stats?.totalTests || 0} completed`} />
+        <Metric label="Best assessment" value={`${data.stats?.bestScore || 0}%`} meta={`Level ${data.stats?.level || 1}`} />
+        <Metric label="Current risk" value={latest?.risk_level || 'No data'} meta={latest ? `${Math.round((latest.pass_probability || 0) * 100)}% pass probability` : 'Run a performance analysis'} className={`risk-${risk}`} />
+      </section>
+
+      <section className="content-grid">
+        <div className="panel">
+          <div className="panel-head"><h2>Performance trend</h2><span>{history.length} saved analyses</span></div>
+          {history.length ? (
+            <div className="chart-box"><Line data={scoreSeries} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#7a8190', maxTicksLimit: 8 } }, y: { min: 0, max: 100, grid: { color: '#eceef2' }, ticks: { color: '#7a8190' } } } }} /></div>
+          ) : <div className="empty-state">No saved performance data.</div>}
         </div>
-      </div>
+
+        <div className="stack">
+          <div className="panel">
+            <div className="panel-head"><h2>Academic snapshot</h2></div>
+            <div className="panel-body">
+              <div className="subject-grid">
+                <Subject label="Math" value={latest?.math_score} />
+                <Subject label="Reading" value={latest?.reading_score} />
+                <Subject label="Writing" value={latest?.writing_score} />
+              </div>
+            </div>
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h2>Study metrics</h2></div>
+            <div className="info-list">
+              <Info label="Attendance" value={latest?.attendance != null ? `${latest.attendance}%` : '—'} />
+              <Info label="Daily study" value={latest?.study_hours != null ? `${latest.study_hours} h` : '—'} />
+              <Info label="Internal 1" value={fmt(latest?.internal_test_1)} />
+              <Info label="Internal 2" value={fmt(latest?.internal_test_2)} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-head"><h2>Recent assessments</h2><span>{data.tests.length} recorded</span></div>
+        {tests.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Date</th><th>Assessment</th><th>Difficulty</th><th>Score</th><th>Result</th><th>Review areas</th></tr></thead><tbody>{tests.map(row => {
+          const percent = row.total_marks ? (row.score / row.total_marks) * 100 : 0;
+          return <tr key={row.id}><td>{date(row.created_at)}</td><td className="cell-main">{row.test_type}</td><td>{row.difficulty}</td><td>{row.score}/{row.total_marks}</td><td><span className={`badge ${percent >= 75 ? 'low' : percent >= 50 ? 'medium' : 'high'}`}>{percent.toFixed(0)}%</span></td><td>{(row.wrong_answers || []).slice(0, 2).join(', ') || 'None'}</td></tr>;
+        })}</tbody></table></div> : <div className="empty-state">No assessments completed.</div>}
+      </section>
     </div>
   );
 }
+
+function Metric({ label, value, meta, className = '' }) { return <div className={`metric-card ${className}`}><span className="metric-label">{label}</span><strong className="metric-value">{value}</strong><span className="metric-meta">{meta}</span></div>; }
+function Subject({ label, value }) { const n = Number(value); return <div className="subject-stat"><span>{label}</span><strong>{value == null ? '—' : value}</strong><div className="progress-track"><i style={{ width: `${Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0}%` }} /></div></div>; }
+function Info({ label, value }) { return <div className="info-item"><span>{label}</span><strong>{value}</strong></div>; }
+
 export default Dashboard;

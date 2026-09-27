@@ -4,6 +4,7 @@ from pymongo import DESCENDING
 from ..auth import get_current_user
 from ..database import get_db
 from ..schemas import ProgressCreate
+from ..services.activity_service import record_activity
 
 router = APIRouter(prefix='/api/progress', tags=['progress'])
 
@@ -24,6 +25,7 @@ async def save_progress(payload: ProgressCreate, current_user=Depends(get_curren
     }
     result = await get_db().student_progress.insert_one(doc)
     doc['_id'] = result.inserted_id
+    await record_activity(current_user, 'prediction_saved', '/predict', {'risk_level': payload.risk_level, 'total_predicted_marks': payload.total_predicted_marks})
     return serialize(doc)
 
 

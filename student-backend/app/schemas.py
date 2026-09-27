@@ -86,3 +86,9 @@ class TestAnalysisRequest(BaseModel):
 class QuizSubmission(BaseModel):
     question: str
     student_answer: str
+
+
+class ActivityTrackRequest(BaseModel):
+    action: str = Field(min_length=1, max_length=50)
+    page: Optional[str] = Field(None, max_length=120)
+    metadata: dict = Field(default_factory=dict)

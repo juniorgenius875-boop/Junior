@@ -21,6 +21,7 @@ def public_user(user: dict) -> dict:
         'id': str(user['_id']),
         'email': user['email'],
         'profile': user.get('profile', {}),
+        'role': user.get('role', 'student'),
         'is_active': user.get('is_active', True),
         'created_at': user.get('created_at'),
     }
@@ -49,7 +50,10 @@ async def register(payload: RegisterRequest):
             'hobbies': '',
         },
         'is_active': True,
+        'role': 'student',
         'token_version': 0,
+        'last_login_at': now,
+        'last_seen_at': now,
         'created_at': now,
         'updated_at': now,
     }
@@ -69,6 +73,19 @@ async def login(payload: LoginRequest):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid email or password')
     if not user.get('is_active', True):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Account is inactive')
+    now = datetime.now(timezone.utc)
+    await get_db().users.update_one(
+        {'_id': user['_id']},
+        {'$set': {'last_login_at': now, 'last_seen_at': now, 'last_activity_at': now, 'last_activity_type': 'login'}},
+    )
+    user.update({'last_login_at': now, 'last_seen_at': now, 'last_activity_at': now, 'last_activity_type': 'login'})
+    await get_db().activity_log.insert_one({
+        'user_id': user['_id'],
+        'action': 'login',
+        'page': None,
+        'metadata': {},
+        'created_at': now,
+    })
     token_response = tokens_for(user)
     return {'user': public_user(user), **token_response.model_dump()}
 

@@ -1,460 +1,108 @@
-// TestCorner.js
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from 'react-hot-toast';
+import { aiApi, progressApi, testsApi } from '../api/client';
+import { InlineLoader, PageLoader } from '../components/Loading';
 
-import React, { useState, useEffect } from 'react';
-import { aiApi, progressApi, testsApi } from '../api/client'; 
-import { toast } from 'react-hot-toast'; 
-import { 
-    BookOpen, CheckCircle, XCircle, Calculator, PenTool, 
-    Layers, ClipboardList, School, ArrowLeft, RefreshCw,
-    ChevronLeft, ChevronRight, Zap, Target
-} from 'lucide-react';
+const SUBJECTS = [
+  { id: 'math', name: 'Math', test_type: 'Math' },
+  { id: 'reading', name: 'Reading', test_type: 'Reading' },
+  { id: 'writing', name: 'Writing', test_type: 'Writing' },
+  { id: 'internal1', name: 'Internal 1', test_type: 'Internal 1' },
+  { id: 'internal2', name: 'Internal 2', test_type: 'Internal 2' },
+  { id: 'assignment', name: 'Assignment', test_type: 'Assignment' },
+];
+
+function adaptiveFrom(prediction) {
+  if (!prediction) return null;
+  if ((prediction.risk_level || '').toLowerCase() === 'low') return { name: 'Advanced challenge', test_type: 'Internal 2', difficulty: 'Very Hard', context: 'High performer. Use complex application-based questions grounded in the curriculum.' };
+  const scores = { Math: Number(prediction.math_score || 0), Reading: Number(prediction.reading_score || 0), Writing: Number(prediction.writing_score || 0) };
+  const [weak, value] = Object.entries(scores).sort((a, b) => a[1] - b[1])[0];
+  if (value < 65) return { name: `${weak} booster`, test_type: weak, difficulty: 'Easy', context: `Focus on fundamentals in ${weak}; latest score ${value}.` };
+  return { name: 'Exam prep', test_type: 'Internal 1', difficulty: 'Medium', context: 'Balanced conceptual and practical questions.' };
+}
 
 function TestCorner() {
+  const [recommendation, setRecommendation] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
+  const [current, setCurrent] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [activeSubject, setActiveSubject] = useState(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [testMeta, setTestMeta] = useState({ test_type: '', difficulty: '' });
-  
-  // NEW STATE: Adaptive Test Recommendation
-  const [adaptiveRecommendation, setAdaptiveRecommendation] = useState(null);
-  const [predictionLoaded, setPredictionLoaded] = useState(false); 
+  const [meta, setMeta] = useState({ test_type: '', difficulty: '' });
 
-  // --- 1. EXAM HALL CONFIGURATION (COLORFUL KID-FRIENDLY PALETTE) ---
-  const subjects = [
-      { 
-          id: 'math', 
-          name: 'Math Test', 
-          test_type: 'Math', 
-          icon: <Calculator size={32}/>, color: '#0ea5e9', bg: '#e0f2fe', border: '#7dd3fc' // Sky Blue
-      },
-      { 
-          id: 'reading', 
-          name: 'Reading Test', 
-          test_type: 'Reading', 
-          icon: <BookOpen size={32}/>, color: '#8b5cf6', bg: '#ede9fe', border: '#c4b5fd' // Violet
-      },
-      { 
-          id: 'writing', 
-          name: 'Writing Test', 
-          test_type: 'Writing', 
-          icon: <PenTool size={32}/>, color: '#f59e0b', bg: '#fef3c7', border: '#fcd34d' // Amber
-      },
-      { 
-          id: 'internal1', 
-          name: 'Internal 1', 
-          test_type: 'Internal 1', 
-          icon: <Layers size={32}/>, color: '#10b981', bg: '#d1fae5', border: '#6ee7b7' // Emerald
-      },
-      { 
-          id: 'internal2', 
-          name: 'Internal 2', 
-          test_type: 'Internal 2', 
-          icon: <Layers size={32}/>, color: '#06b6d4', bg: '#cffafe', border: '#67e8f9' // Cyan
-      },
-      { 
-          id: 'assignment', 
-          name: 'Assignment', 
-          test_type: 'Assignment', 
-          icon: <ClipboardList size={32}/>, color: '#6366f1', bg: '#e0e7ff', border: '#a5b4fc' // Indigo
-      },
-  ];
-
-  // --- 2. ADAPTIVE LOGIC ---
-  const calculateAdaptiveTest = (prediction) => {
-      if (!prediction) return null;
-      
-      const { risk_level, math_score, reading_score, writing_score } = prediction;
-      
-      // Scenario A: High Performer
-      if (risk_level === 'Low') {
-          return {
-              subjectName: 'Advanced Challenge',
-              test_type: 'Internal 2', // Use a mixed test type
-              difficulty: 'Very Hard',
-              context: 'Student is a high performer with Low Risk. Provide complex, application-based questions to challenge them.',
-              reason: '🚀 You are crushing it! We curated a "Champion Level" challenge to push your limits.'
-          };
-      }
-      
-      const scores = {
-          'Math': parseFloat(math_score) || 0,
-          'Reading': parseFloat(reading_score) || 0,
-          'Writing': parseFloat(writing_score) || 0
-      };
-      
-      let weakestSubject = null;
-      let lowestScore = 100;
-
-      for (const [subject, score] of Object.entries(scores)) {
-          if (score < lowestScore) {
-              lowestScore = score;
-              weakestSubject = subject;
-          }
-      }
-
-      // Scenario B: Specific Weakness Identified
-      if (weakestSubject && lowestScore < 65) {
-          return {
-              subjectName: `${weakestSubject} Booster`,
-              test_type: weakestSubject,
-              difficulty: 'Easy', // Start easy to build confidence
-              context: `Student scored low (${lowestScore}%) in ${weakestSubject}. Focus on fundamental concepts, definitions, and easy examples to rebuild basics.`,
-              reason: `💪 We noticed a dip in ${weakestSubject} (${lowestScore}%). Let's fix the basics with a quick booster session!`
-          };
-      }
-      
-      // Scenario C: Medium Performer / Average
-      return {
-          subjectName: 'Exam Prep Drill',
-          test_type: 'Internal 1',
-          difficulty: 'Medium',
-          context: 'Student is performing averagely. Provide a balanced mix of conceptual and practical questions.',
-          reason: '🎯 Steady progress! Here is a balanced drill to keep you exam-ready.'
-      };
-  };
-
-  // --- 3. LOAD LATEST SAVED PERFORMANCE ---
   useEffect(() => {
-    const fetchPredictionHistory = async () => {
-      setPredictionLoaded(false);
-      try {
-        const data = await progressApi.latest();
-        if (data) setAdaptiveRecommendation(calculateAdaptiveTest(data));
-      } catch (error) {
-        console.error('Error fetching prediction history:', error);
-        toast.error('Could not load past performance data.');
-      } finally {
-        setPredictionLoaded(true);
-      }
-    };
-
-    fetchPredictionHistory();
+    progressApi.latest().then(data => setRecommendation(adaptiveFrom(data))).catch(() => setRecommendation(null)).finally(() => setInitialLoading(false));
   }, []);
 
-  // --- 4. TEST GENERATION (RESTORED LIVE API CALL) ---
-  const generateTest = async (subject, difficultyOverride = null, contextOverride = null) => {
-    setLoading(true);
-    setQuestions([]);
-    setScore(null);
-    setAnswers({});
-    setIsSubmitted(false);
-    setActiveSubject(subject.name || subject.subjectName);
-    setCurrentIndex(0);
-
-    const difficulty = difficultyOverride || 'Hard';
-    const context = contextOverride || '';
-    setTestMeta({ test_type: subject.test_type, difficulty });
-
-    const loadingToast = toast.loading(`Generating ${subject.name || subject.subjectName} from your learning library...`);
-
+  const generate = async (subject, difficulty = 'Hard', context = '') => {
+    setLoading(true); setQuestions([]); setAnswers({}); setSubmitted(false); setScore(null); setCurrent(0);
+    setMeta({ test_type: subject.test_type, difficulty });
     try {
-      const data = await aiApi.generateTest({
-        difficulty,
-        test_type: subject.test_type,
-        learning_context: context
-      });
-
-      const parsedQuestions = data.questions || (Array.isArray(data) ? data : []);
-      if (!parsedQuestions.length) throw new Error('No questions returned by the AI.');
-
-      setQuestions(parsedQuestions);
-      toast.dismiss(loadingToast);
-      toast.success('Mission Started! 🚀');
-    } catch (err) {
-      console.error('Test generation error:', err);
-      toast.dismiss(loadingToast);
-      toast.error(err.message || 'Could not generate test questions.');
-    } finally {
-      setLoading(false);
-    }
+      const data = await aiApi.generateTest({ difficulty, test_type: subject.test_type, learning_context: context });
+      const list = data?.questions || (Array.isArray(data) ? data : []);
+      if (!list.length) throw new Error('No questions returned');
+      setQuestions(list);
+    } catch (error) { toast.error(error.message || 'Could not generate assessment'); }
+    finally { setLoading(false); }
   };
 
-  const submitTest = async () => {
-    if (Object.keys(answers).length < questions.length) {
-      toast.error('Please answer all questions first!');
-      return;
-    }
-
-    let newScore = 0;
-    const wrongAnswers = [];
-    questions.forEach((q, index) => {
-      if (answers[index] === q.correct_answer) newScore++;
-      else wrongAnswers.push(q.question);
-    });
-
-    setScore(newScore);
-    setIsSubmitted(true);
-    setCurrentIndex(0);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    try {
-      await testsApi.saveResult({
-        test_type: testMeta.test_type || activeSubject || 'Unknown',
-        difficulty: testMeta.difficulty || 'Medium',
-        score: newScore,
-        total_marks: questions.length,
-        wrong_answers: wrongAnswers
-      });
-    } catch (error) {
-      console.error('Could not save test result:', error);
-      toast.error('Your score is shown, but it could not be saved.');
-    }
-
-    if (newScore > questions.length / 2) toast.success(`Great job! Score: ${newScore}`);
-    else toast('Keep practicing! 💪');
+  const submit = async () => {
+    if (Object.keys(answers).length < questions.length) return toast.error('Answer every question before submitting');
+    let correct = 0; const wrong = [];
+    questions.forEach((q, i) => { if (answers[i] === q.correct_answer) correct += 1; else wrong.push(q.question); });
+    setScore(correct); setSubmitted(true); setCurrent(0);
+    try { await testsApi.saveResult({ test_type: meta.test_type, difficulty: meta.difficulty, score: correct, total_marks: questions.length, wrong_answers: wrong }); }
+    catch (error) { toast.error(error.message || 'Score could not be saved'); }
   };
 
-  const handleNext = () => {
-      if (currentIndex < questions.length - 1) {
-          setCurrentIndex(currentIndex + 1);
-      }
-  };
+  const q = questions[current];
+  const answered = Object.keys(answers).length;
+  const percent = questions.length ? Math.round((answered / questions.length) * 100) : 0;
+  const resultPercent = questions.length && score != null ? Math.round((score / questions.length) * 100) : null;
 
-  const handlePrev = () => {
-      if (currentIndex > 0) {
-          setCurrentIndex(currentIndex - 1);
-      }
-  };
+  if (initialLoading) return <PageLoader rows={2} />;
 
-  const getButtonColor = (option) => {
-      const currentQ = questions[currentIndex];
-      const isSelected = answers[currentIndex] === option;
-
-      if (!isSubmitted) return isSelected ? '#e0f2fe' : 'white'; // Light Sky Blue for selection
-      
-      if (option === currentQ.correct_answer) return '#dcfce7'; // Green-100
-      if (isSelected && option !== currentQ.correct_answer) return '#fee2e2'; // Red-100 (kept minimal for wrong answer feedback)
-      return '#f8fafc'; 
-  };
-
-  const getButtonBorder = (option) => {
-      const currentQ = questions[currentIndex];
-      const isSelected = answers[currentIndex] === option;
-
-      if (!isSubmitted) return isSelected ? '2px solid #0ea5e9' : '1px solid #cbd5e1'; // Sky Blue border
-      
-      if (option === currentQ.correct_answer) return '2px solid #22c55e'; // Green-500
-      if (isSelected && option !== currentQ.correct_answer) return '2px solid #ef4444'; // Red-500
-      return '1px solid #cbd5e1';
-  };
-
-  const currentQ = questions[currentIndex];
+  if (questions.length && q) return (
+    <div className="page-shell question-shell">
+      <div className="page-heading"><div><h1>{meta.test_type}</h1><p>{meta.difficulty}</p></div>{submitted && <span className={`badge ${resultPercent >= 75 ? 'low' : resultPercent >= 50 ? 'medium' : 'high'}`}>{score}/{questions.length} · {resultPercent}%</span>}</div>
+      <div className="panel">
+        <div className="panel-body">
+          <div className="question-top"><button className="text-button" onClick={() => { setQuestions([]); setScore(null); }}>Exit assessment</button><span className="question-number">Question {current + 1} of {questions.length}</span></div>
+          <div className="question-progress"><i style={{ width: `${submitted ? ((current + 1) / questions.length) * 100 : percent}%` }} /></div>
+          <h2 className="question-text">{q.question}</h2>
+          <div className="option-list">{q.options.map(option => {
+            const selected = answers[current] === option;
+            let cls = selected ? 'selected' : '';
+            if (submitted && option === q.correct_answer) cls = 'correct';
+            else if (submitted && selected && option !== q.correct_answer) cls = 'wrong';
+            return <button key={option} disabled={submitted} className={`option-button ${cls}`} onClick={() => setAnswers({ ...answers, [current]: option })}>{option}</button>;
+          })}</div>
+          {submitted && answers[current] !== q.correct_answer && <div className="adaptive-strip" style={{ marginTop: 16 }}><div><strong>Correct answer</strong><span>{q.correct_answer}</span></div></div>}
+          <div className="question-footer">
+            <button className="button secondary" disabled={current === 0} onClick={() => setCurrent(v => v - 1)}>Previous</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {current < questions.length - 1 && <button className="button primary" onClick={() => setCurrent(v => v + 1)}>Next</button>}
+              {current === questions.length - 1 && !submitted && <button className="button primary" onClick={submit}>Submit</button>}
+              {current === questions.length - 1 && submitted && <button className="button primary" onClick={() => { setQuestions([]); setScore(null); }}>New assessment</button>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="page-container" style={{maxWidth: '800px', margin: '0 auto', paddingBottom: '50px'}}>
-        
-        {/* --- HEADER --- */}
-        {!questions.length && (
-            <div style={{textAlign: 'center', marginBottom: '40px', marginTop: '20px'}}>
-                <h1 style={{fontSize: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', color: '#1e293b', marginBottom: '10px'}}>
-                    <School size={40} color="#8b5cf6"/> Exam Hall
-                </h1>
-                <p style={{color: '#64748b', fontSize: '1.1rem'}}>Select a subject to test your knowledge.</p>
-                <span style={{color: '#8b5cf6', fontWeight: 'bold'}}>All The Best!!!</span>
-            </div>
-        )}
-
-        {/* --- LOADING PREDICTION DATA --- */}
-        {!predictionLoaded && !questions.length && (
-             <div style={{textAlign: 'center', marginTop: '50px', padding: '30px'}}>
-                <div className="loader" style={{marginBottom: '20px'}}></div>
-                <h2>Analyzing past performance...</h2>
-                <p style={{color: '#64748b'}}>Loading your recent AI assessment from history.</p>
-            </div>
-        )}
-
-        {/* --- ADAPTIVE TEST RECOMMENDATION --- */}
-        {predictionLoaded && !questions.length && !loading && adaptiveRecommendation && (
-            <div className="card" style={{
-                marginBottom: '30px', 
-                background: 'linear-gradient(to right, #e0f2fe, #f0f9ff)', // Light Blue Gradient
-                border: '2px dashed #3b82f6', // Blue Border
-                position: 'relative',
-                overflow: 'hidden'
-            }}>
-                <div style={{position:'absolute', right:'-10px', top:'-10px', fontSize:'5rem', opacity:'0.1'}}>💡</div>
-                
-                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom:'15px'}}>
-                    <h3 style={{display:'flex', alignItems:'center', gap:'10px', marginTop:0, color:'#0369a1', fontSize:'1.4rem'}}>
-                        <Target size={28} color="#0284c7"/> AI Mission Plan
-                    </h3>
-                    <span style={{
-                        background:'#bae6fd', color:'#0369a1', padding:'5px 12px', 
-                        borderRadius:'20px', fontSize:'0.85rem', fontWeight:'bold', border:'1px solid #7dd3fc'
-                    }}>
-                        {adaptiveRecommendation.difficulty} Mode
-                    </span>
-                </div>
-                
-                <p style={{color: '#0c4a6e', marginBottom: '20px', fontSize: '1.1rem', lineHeight: '1.5'}}>
-                    {adaptiveRecommendation.reason}
-                </p>
-
-                <button 
-                    onClick={() => generateTest(adaptiveRecommendation, adaptiveRecommendation.difficulty, adaptiveRecommendation.context)} 
-                    className="btn-primary" 
-                    style={{
-                        background: '#0ea5e9', 
-                        width: '100%', 
-                        display: 'flex', 
-                        justifyContent: 'center', 
-                        alignItems: 'center', 
-                        gap: '10px',
-                        padding: '14px',
-                        fontSize: '1.1rem'
-                    }}
-                >
-                    <Zap size={22} fill="white"/> Activate Mission: {adaptiveRecommendation.subjectName}
-                </button>
-            </div>
-        )}
-        
-        {/* --- EXAM HALL (Subject Selection) --- */}
-        {predictionLoaded && !questions.length && !loading && (
-            <div style={{
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
-                gap: '20px', padding: '10px'
-            }}>
-                
-                {!adaptiveRecommendation && (
-                     <div style={{gridColumn: '1 / -1', textAlign: 'center', marginBottom: '10px', padding: '15px', background: '#f3e8ff', borderRadius: '10px', color: '#7c3aed'}}>
-                         <p>💡 Run a **Stats & Predict** mission first to unlock personalized recommendations!</p>
-                     </div>
-                )}
-
-                {subjects.map((sub) => (
-                    <div key={sub.id} onClick={() => generateTest(sub, "Hard")} style={{ 
-                        background: sub.bg, border: `2px solid ${sub.border}`, borderBottom: `6px solid ${sub.border}`,
-                        borderRadius: '16px', padding: '30px', cursor: 'pointer', transition: 'transform 0.2s',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px',
-                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
-                    }}>
-                        <div style={{color: sub.color}}>{sub.icon}</div>
-                        <h3 style={{margin: 0, fontSize: '1.4rem', color: '#334155'}}>{sub.name}</h3>
-                        <span style={{fontSize: '0.9rem', fontWeight: 'bold', color: '#64748b'}}>Start Exam (Manual)</span>
-                    </div>
-                ))}
-            </div>
-        )}
-
-
-        {/* --- LOADING (Test Generation) --- */}
-        {loading && (
-            <div style={{textAlign: 'center', marginTop: '50px'}}>
-                <div className="loader" style={{marginBottom: '20px'}}></div>
-                <h2>Preparing {activeSubject}...</h2>
-                <p style={{color:'#64748b'}}>AI is curating questions based on your profile.</p>
-            </div>
-        )}
-
-        {/* --- QUESTION CARD (ONE BY ONE) --- */}
-        {questions.length > 0 && currentQ && (
-            <div className="card" style={{minHeight: '400px', display: 'flex', flexDirection: 'column'}}>
-                
-                {/* TOP BAR: Back & Progress */}
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
-                    <button onClick={() => {setQuestions([]); setScore(null);}} 
-                        style={{background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '5px', color: '#64748b', cursor: 'pointer', fontSize: '0.9rem'}}>
-                        <ArrowLeft size={18}/> Quit
-                    </button>
-                    <span style={{fontWeight: 'bold', color: '#0ea5e9'}}>
-                        Question {currentIndex + 1} / {questions.length}
-                    </span>
-                </div>
-
-                {/* SCORE BANNER (Only shows after submit) */}
-                {isSubmitted && (
-                    <div style={{
-                        background: score === questions.length ? '#dcfce7' : '#fef3c7',
-                        border: score === questions.length ? '2px solid #22c55e' : '2px solid #f59e0b',
-                        borderRadius: '12px', padding: '15px', textAlign: 'center', marginBottom: '20px'
-                    }}>
-                        <h2 style={{margin: 0, fontSize: '1.5rem', color: '#1e293b'}}>Score: {score} / {questions.length}</h2>
-                        <p style={{margin: '5px 0 0', fontSize: '0.9rem', color: '#64748b'}}>Review your answers below.</p>
-                    </div>
-                )}
-
-                {/* QUESTION TEXT */}
-                <h3 style={{fontSize: '1.2rem', color: '#334155', marginBottom: '25px', lineHeight: '1.5'}}>
-                    {currentQ.question}
-                </h3>
-
-                {/* OPTIONS LIST */}
-                <div style={{display: 'grid', gap: '12px', flex: 1}}>
-                    {currentQ.options.map((opt) => (
-                        <button key={opt} 
-                            disabled={isSubmitted} 
-                            onClick={() => setAnswers({...answers, [currentIndex]: opt})}
-                            style={{
-                                padding: '16px', borderRadius: '12px', 
-                                border: getButtonBorder(opt),
-                                backgroundColor: getButtonColor(opt),
-                                color: '#1e293b', textAlign: 'left', 
-                                cursor: isSubmitted ? 'default' : 'pointer', fontSize: '1rem',
-                                position: 'relative', transition: 'all 0.2s',
-                                fontWeight: answers[currentIndex] === opt ? '600' : '400'
-                            }}>
-                            {opt}
-                            {/* Icons for Review Mode */}
-                            {isSubmitted && opt === currentQ.correct_answer && <CheckCircle size={20} color="#22c55e" style={{position:'absolute', right:'15px', top:'16px'}}/>}
-                            {isSubmitted && answers[currentIndex] === opt && answers[currentIndex] !== currentQ.correct_answer && <XCircle size={20} color="#ef4444" style={{position:'absolute', right:'15px', top:'16px'}}/>}
-                        </button>
-                    ))}
-                </div>
-
-                {/* EXPLANATION (Only if wrong in review mode) */}
-                {isSubmitted && answers[currentIndex] !== currentQ.correct_answer && (
-                    <div style={{marginTop: '20px', padding: '12px', background: '#fff1f2', borderRadius: '8px', borderLeft: '4px solid #f43f5e', color: '#be123c'}}>
-                        <strong>Correct Answer:</strong> {currentQ.correct_answer}
-                    </div>
-                )}
-
-                {/* NAVIGATION FOOTER */}
-                <div style={{marginTop: '30px', display: 'flex', justifyContent: 'space-between', gap: '15px'}}>
-                    
-                    {/* PREV BUTTON */}
-                    <button onClick={handlePrev} disabled={currentIndex === 0}
-                        style={{
-                            padding: '12px 20px', borderRadius: '10px', border: '1px solid #cbd5e1',
-                            background: currentIndex === 0 ? '#f1f5f9' : 'white', 
-                            color: currentIndex === 0 ? '#94a3b8' : '#334155',
-                            cursor: currentIndex === 0 ? 'default' : 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '5px'
-                        }}>
-                        <ChevronLeft size={20}/> Prev
-                    </button>
-
-                    {/* NEXT / SUBMIT BUTTON */}
-                    {currentIndex === questions.length - 1 ? (
-                        !isSubmitted ? (
-                            <button onClick={submitTest} className="btn-primary" 
-                                style={{padding: '12px 30px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', background: '#0ea5e9'}}>
-                                Submit Exam <CheckCircle size={20}/>
-                            </button>
-                        ) : (
-                            <button onClick={() => {setQuestions([]); setScore(null);}} 
-                                style={{
-                                    padding: '12px 30px', borderRadius: '10px', background: '#334155', color: 'white', border: 'none',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
-                                }}>
-                                <RefreshCw size={18}/> New Test
-                            </button>
-                        )
-                    ) : (
-                        <button onClick={handleNext} className="btn-primary"
-                            style={{padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '5px', background: '#0ea5e9'}}>
-                            Next <ChevronRight size={20}/>
-                        </button>
-                    )}
-                </div>
-
-            </div>
-        )}
+    <div className="page-shell">
+      <div className="page-heading"><div><h1>Assessments</h1></div></div>
+      {loading ? <div className="panel"><div className="panel-body"><InlineLoader label="Generating assessment" /><div className="skeleton skeleton-panel" style={{ marginTop: 18 }} /></div></div> : <div className="stack">
+        {recommendation && <section className="adaptive-strip"><div><strong>{recommendation.name}</strong><span>{recommendation.test_type} · {recommendation.difficulty}</span></div><button className="button primary" onClick={() => generate(recommendation, recommendation.difficulty, recommendation.context)}>Start adaptive assessment</button></section>}
+        <section className="panel">
+          <div className="panel-head"><h2>Assessment library</h2></div>
+          <div className="panel-body"><div className="assessment-picker">{SUBJECTS.map(subject => <button className="assessment-choice" key={subject.id} onClick={() => generate(subject)}><strong>{subject.name}</strong><span>Hard</span></button>)}</div></div>
+        </section>
+      </div>}
     </div>
   );
 }

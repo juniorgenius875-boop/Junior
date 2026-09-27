@@ -16,6 +16,9 @@ async def connect_db():
     await db.student_progress.create_index([('user_id', ASCENDING), ('created_at', DESCENDING)])
     await db.test_results.create_index([('user_id', ASCENDING), ('created_at', DESCENDING)])
     await db.chat_history.create_index([('user_id', ASCENDING), ('created_at', DESCENDING)])
+    await db.activity_log.create_index([('user_id', ASCENDING), ('created_at', DESCENDING)])
+    await db.activity_log.create_index([('created_at', DESCENDING)])
+    await db.users.create_index([('last_seen_at', DESCENDING)])
 
 
 async def close_db():

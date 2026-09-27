@@ -76,3 +76,9 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Session has been revoked')
 
     return user
+
+
+async def get_current_admin(current_user=Depends(get_current_user)):
+    if current_user.get('role', 'student') != 'admin':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Admin access required')
+    return current_user

@@ -1,0 +1,8 @@
+# Editor / OS generated files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Python generated files
+**/__pycache__/
+*.py[cod]

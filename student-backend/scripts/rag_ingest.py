@@ -48,18 +48,19 @@ def main():
     for path in files:
         print(f'Uploading: {path.relative_to(root)}')
         operation = client.file_search_stores.upload_to_file_search_store(
-            file=str(path),
-            file_search_store_name=store.name,
-            config={
-                'display_name': str(path.relative_to(root)),
-                'chunking_config': {
-                    'white_space_config': {
-                        'max_tokens_per_chunk': 500,
-                        'max_overlap_tokens': 75,
-                    }
-                },
-            },
-        )
+    file=str(path),
+    file_search_store_name=store.name,
+    config={
+        'display_name': str(path.relative_to(root)),
+        'mime_type': 'text/markdown',
+        'chunking_config': {
+            'white_space_config': {
+                'max_tokens_per_chunk': 500,
+                'max_overlap_tokens': 75,
+            }
+        },
+    },
+)
         while not operation.done:
             time.sleep(2)
             operation = client.operations.get(operation)

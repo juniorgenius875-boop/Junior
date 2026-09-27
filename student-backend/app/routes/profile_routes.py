@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from ..auth import get_current_user
 from ..database import get_db
 from ..schemas import ProfileData
+from ..services.activity_service import record_activity
 
 router = APIRouter(prefix='/api/profile', tags=['profile'])
 
@@ -19,6 +20,7 @@ async def update_profile(payload: ProfileData, current_user=Depends(get_current_
         {'_id': current_user['_id']},
         {'$set': {'profile': profile, 'updated_at': datetime.now(timezone.utc)}},
     )
+    await record_activity(current_user, 'profile_updated', '/profile')
     return profile
 
 

@@ -56,7 +56,24 @@ export async function apiRequest(path, options = {}, retry = true) {
   const accessToken = tokenStore.getAccess();
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
 
-  let response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const { timeoutMs = 0, ...fetchOptions } = options;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...fetchOptions,
+      headers,
+      signal: fetchOptions.signal || controller?.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('The AI tutor took too long to respond. Please try again.');
+    }
+    throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 
   if (response.status === 401 && retry && tokenStore.getRefresh()) {
     const refreshed = await refreshAccessToken();
@@ -71,6 +88,38 @@ export async function apiRequest(path, options = {}, retry = true) {
     throw error;
   }
   return data;
+}
+
+
+
+export async function apiDownload(path, fallbackName = 'report.pdf', retry = true) {
+  const headers = new Headers();
+  const accessToken = tokenStore.getAccess();
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
+  if (response.status === 401 && retry && tokenStore.getRefresh()) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return apiDownload(path, fallbackName, false);
+  }
+  if (!response.ok) {
+    const data = await parseResponse(response);
+    throw new Error(data?.detail || data?.message || 'Could not export report');
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const filename = match?.[1] || fallbackName;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  return filename;
 }
 
 export const authApi = {
@@ -109,7 +158,34 @@ export const testsApi = {
 };
 
 export const aiApi = {
-  chat: (message) => apiRequest('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }) }),
+  chat: (message) => apiRequest('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }), timeoutMs: 30000 }),
+  providers: () => apiRequest('/api/ai/providers'),
   generateTest: (payload) => apiRequest('/api/ai/tests/generate', { method: 'POST', body: JSON.stringify(payload) }),
   analyzeTest: (payload) => apiRequest('/api/ai/tests/analyze', { method: 'POST', body: JSON.stringify(payload) }),
+};
+
+
+export const activityApi = {
+  track: (action, page, metadata = {}) => apiRequest('/api/activity/track', {
+    method: 'POST',
+    body: JSON.stringify({ action, page, metadata }),
+  }),
+};
+
+export const adminApi = {
+  overview: () => apiRequest('/api/admin/overview'),
+  users: ({ search = '', page = 1, limit = 20, role = 'student' } = {}) => {
+    const params = new URLSearchParams({ search, page: String(page), limit: String(limit), role });
+    return apiRequest(`/api/admin/users?${params.toString()}`);
+  },
+  user: (id) => apiRequest(`/api/admin/users/${id}`),
+  activity: (limit = 50) => apiRequest(`/api/admin/activity?limit=${limit}`),
+};
+
+
+export const reportApi = {
+  mine: () => apiRequest('/api/reports/me'),
+  downloadMine: () => apiDownload('/api/reports/me.pdf', 'student-learning-report.pdf'),
+  downloadAdminStudents: () => apiDownload('/api/admin/report/students.pdf', 'junior-genius-students-report.pdf'),
+  downloadAdminStudent: (id) => apiDownload(`/api/admin/report/users/${id}.pdf`, 'student-learning-report.pdf'),
 };
