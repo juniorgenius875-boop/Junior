@@ -1,0 +1,23 @@
+{
+  "name": "boardtrack-junior",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "dev:server": "npm --prefix server run dev",
+    "dev:all": "concurrently \"next dev -H 0.0.0.0\" \"npm --prefix server run dev\"",
+    "build": "next build",
+    "start": "next start",
+    "install:all": "npm install && npm --prefix server install"
+  },
+  "dependencies": {
+    "next": "16.3.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.3.0",
+    "concurrently": "^9.2.1"
+  }
+}
