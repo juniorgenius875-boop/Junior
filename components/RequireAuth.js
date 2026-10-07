@@ -11,13 +11,21 @@ export default function RequireAuth({ children, admin = false }) {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) router.replace("/login");
-    else if (admin && profile?.role !== "admin") router.replace("/dashboard");
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (admin && profile?.role !== "admin") {
+      router.replace("/dashboard");
+      return;
+    }
+    if (!admin && profile?.role === "admin") {
+      router.replace("/admin");
+    }
   }, [user, profile, loading, admin, router]);
 
-  if (loading || !user || (admin && profile?.role !== "admin")) {
-    return <PageSkeleton cards={6}/>;
-  }
+  const blocked = loading || !user || (admin && profile?.role !== "admin") || (!admin && profile?.role === "admin");
+  if (blocked) return <PageSkeleton cards={6}/>;
 
   return children;
 }

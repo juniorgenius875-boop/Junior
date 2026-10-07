@@ -44,9 +44,9 @@ export default function LoginPage() {
         <h2>{mode==="login"?"Sign in to your workspace":"Create student account"}</h2>
         <p className="muted">One login for Study Tracker and Junior Genius.</p>
         <form onSubmit={submit} className="stack-form modern-stack-form">
-          {mode==="register"&&<label>Student name<div className="input-shell"><Icon name="user" size={17}/><input value={name} onChange={e=>setName(e.target.value)} required placeholder="Student name"/></div></label>}
-          <label>Email<div className="input-shell"><span className="at-icon">@</span><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required placeholder="student@example.com"/></div></label>
-          <label>Password<div className="input-shell"><Icon name="shield" size={17}/><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={6} placeholder="Minimum 6 characters"/></div></label>
+          {mode==="register"&&<label>Student name<div className="input-shell"><Icon name="user" size={17}/><input value={name} onChange={e=>setName(e.target.value)} required /></div></label>}
+          <label>Email<div className="input-shell"><span className="at-icon">@</span><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></div></label>
+          <label>Password<div className="input-shell"><Icon name="shield" size={17}/><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={6}/></div></label>
           {error&&<div className="error-box">{error}</div>}
           <button className="primary-btn auth-submit" disabled={busy}>{busy?"Please wait…":mode==="login"?"Sign in":"Create account"}<Icon name="arrow" size={17}/></button>
         </form>

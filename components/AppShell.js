@@ -20,10 +20,9 @@ const studentNav = [
 ];
 
 const adminNav = [
-  { href: "/admin", label: "Study Overview", mobile: "Overview", icon: "chart", group: "Admin" },
-  { href: "/admin/planner", label: "Work Planner", mobile: "Planner", icon: "calendar", group: "Admin" },
-  { href: "/admin/learning", label: "Junior Insights", mobile: "Insights", icon: "brain", group: "Admin" },
-  { href: "/dashboard", label: "Student View", mobile: "Student", icon: "user", group: "Account" },
+  { href: "/admin", label: "Dashboard", mobile: "Dashboard", icon: "home", group: "Management" },
+  { href: "/admin/planner", label: "Work Planner", mobile: "Planner", icon: "calendar", group: "Management" },
+  { href: "/admin/learning", label: "Learning Insights", mobile: "Insights", icon: "brain", group: "Analytics" },
 ];
 
 const studentBottomNav = [studentNav[0], studentNav[1], studentNav[2], studentNav[8]];
@@ -106,10 +105,17 @@ export default function AppShell({ children, title, subtitle, admin = false, act
       </div>
 
       <div className="sidebar-profile ui-v2-sidebar-profile">
-        <Link href="/profile" className="sidebar-user">
-          <span className="avatar avatar-soft">{initials(profile)}</span>
-          <span className="sidebar-user-copy"><strong>{displayName}</strong><small>{profile?.email || roleLabel}</small></span>
-        </Link>
+        {admin ? (
+          <div className="sidebar-user admin-account-chip">
+            <span className="avatar avatar-soft">{initials(profile)}</span>
+            <span className="sidebar-user-copy"><strong>{displayName}</strong><small>{profile?.email || roleLabel}</small></span>
+          </div>
+        ) : (
+          <Link href="/profile" className="sidebar-user">
+            <span className="avatar avatar-soft">{initials(profile)}</span>
+            <span className="sidebar-user-copy"><strong>{displayName}</strong><small>{profile?.email || roleLabel}</small></span>
+          </Link>
+        )}
         <button className="sidebar-logout" onClick={onLogout} aria-label="Sign out" title="Sign out"><Icon name="logout" size={18}/></button>
       </div>
     </aside>
@@ -128,10 +134,17 @@ export default function AppShell({ children, title, subtitle, admin = false, act
         </div>
         <div className="top-actions">
           {actions}
-          <Link href="/profile" className="top-profile-chip ui-v2-profile-chip" aria-label="Open profile">
-            <span className="avatar">{initials(profile)}</span>
-            <span className="top-profile-copy"><strong>{displayName}</strong><small>{roleLabel}</small></span>
-          </Link>
+          {admin ? (
+            <div className="top-profile-chip ui-v2-profile-chip admin-profile-chip">
+              <span className="avatar">{initials(profile)}</span>
+              <span className="top-profile-copy"><strong>{displayName}</strong><small>{roleLabel}</small></span>
+            </div>
+          ) : (
+            <Link href="/profile" className="top-profile-chip ui-v2-profile-chip" aria-label="Open profile">
+              <span className="avatar">{initials(profile)}</span>
+              <span className="top-profile-copy"><strong>{displayName}</strong><small>{roleLabel}</small></span>
+            </Link>
+          )}
         </div>
       </header>
       <div className="page-content ui-v2-content">{children}</div>
